@@ -4,6 +4,7 @@
 #include <TFT_eSPI.h>
 
 #include <XPT2046_Touchscreen.h>
+#include "actions.h"
 
 // A library for interfacing with the touch screen
 //
@@ -117,6 +118,7 @@ void setup()
   // Integrate EEZ Studio GUI
   ui_init();
 }
+
 extern lv_event_t g_eez_event;
 extern bool g_eez_event_is_available;
 static int Valbtn1 = 650;
@@ -126,6 +128,15 @@ static int Valbtn4 = 1230;
 static int valfluk = 20;
 static int intPotValPrev = 1; // Get an initial baseline value.
 
+static bool t1activ = false;
+static bool t2activ = false;
+static bool t3activ = false;
+static bool t4activ = false;
+int t1 = 0;
+int t2 = 0;
+int t3 = 0;
+int t4 = 0;
+
 void loop()
 {
   lv_tick_inc(millis() - lastTick); // Update the tick timer. Tick is new for LVGL 9
@@ -134,6 +145,75 @@ void loop()
   delay(10);
   ui_tick();
 
+  char labelText1[10] = {0};
+  sprintf(labelText1, "%04d", t2);
+  lv_label_set_text(objects.lbl2, labelText1);
+  char labelText2[10] = {0};
+  sprintf(labelText2, "%04d", t3);
+  lv_label_set_text(objects.lbl3, labelText2);
+  char labelText3[10] = {0};
+  sprintf(labelText3, "%04d", t4);
+  lv_label_set_text(objects.lbl4, labelText3);
+  char labelText4[10] = {0};
+  sprintf(labelText4, "%04d", t1);
+  lv_label_set_text(objects.lbl1, labelText4);
+  if (t1activ == true)
+  {
+    t1 = t1 + 1;
+  }
+  else if (t2activ == true)
+  {
+    t2 = t2 + 10;
+  }
+  else if (t3activ == true)
+  {
+    t3 = t3 + 10;
+  }
+  else if (t4activ == true)
+  {
+    t4 = t4 + 10;
+  }
+
+  if (g_eez_event_is_available == true)
+  {
+    lv_obj_t *obj = lv_event_get_target_obj(&g_eez_event);
+    Serial.printf("Received event from obj: %u\n", obj);
+    g_eez_event_is_available = false;
+
+    if (obj == objects.btn1)
+    {
+      t1activ = true;
+      t2activ = false;
+      t3activ = false;
+      t4activ = false;
+    }
+
+    if (obj == objects.btn2)
+    {
+      t1activ = false;
+      t2activ = true;
+      t3activ = false;
+      t4activ = false;
+    }
+
+    if (obj == objects.btn3)
+    {
+      t1activ = false;
+      t2activ = false;
+      t3activ = true;
+      t4activ = false;
+    }
+
+    if (obj == objects.btn4)
+    {
+      t1activ = false;
+      t2activ = false;
+      t3activ = false;
+      t4activ = true;
+    }
+  }
+
+  
 
   int potValCur = analogRead(ANALOG_PIN_0); // Get the current raw value.
   if (potValCur == 0)
@@ -142,35 +222,45 @@ void loop()
     intPotValPrev = potValCur;
   }
 
-  else if (abs(potValCur - Valbtn1) < valfluk && (abs(potValCur - intPotValPrev) > valfluk)) 
+  else if (abs(potValCur - Valbtn1) < valfluk && (abs(potValCur - intPotValPrev) > valfluk))
   {
-    
-    
-      Serial.printf("BT1: %ld\n", potValCur);
-     
-      intPotValPrev = potValCur;
-    
+
+    Serial.printf("BT1: %ld\n", potValCur);
+      t1activ = true;
+      t2activ = false;
+      t3activ = false;
+      t4activ = false;
+    intPotValPrev = potValCur;
   }
   else if (abs(potValCur - Valbtn2) < valfluk && (abs(potValCur - intPotValPrev) > valfluk))
   {
 
     Serial.printf("BT2: %ld\n", potValCur);
+          t1activ = false;
+      t2activ = true;
+      t3activ = false;
+      t4activ = false;
     intPotValPrev = potValCur;
-
   }
   else if (abs(potValCur - Valbtn3) < valfluk && (abs(potValCur - intPotValPrev) > valfluk))
   {
-    
+
     Serial.printf("BTN3: %ld\n", potValCur);
+          t1activ = false;
+      t2activ = false;
+      t3activ = true;
+      t4activ = false;
     intPotValPrev = potValCur;
-    
   }
-  else if (abs(potValCur - Valbtn4) < valfluk  && (abs(potValCur - intPotValPrev) > valfluk))
+  else if (abs(potValCur - Valbtn4) < valfluk && (abs(potValCur - intPotValPrev) > valfluk))
   {
-    
-   Serial.printf("BTN4: %ld\n", potValCur);
-   intPotValPrev = potValCur;
-    
+
+    Serial.printf("BTN4: %ld\n", potValCur);
+          t1activ = false;
+      t2activ = false;
+      t3activ = false;
+      t4activ = true;
+    intPotValPrev = potValCur;
   }
   // ========== ADC input END   ==========
 }
