@@ -2,9 +2,11 @@
 #include "ui.h"
 
 #include <TFT_eSPI.h>
-
+#include <Preferences.h>
 #include <XPT2046_Touchscreen.h>
 #include "actions.h"
+#include <time.h>  
+//#include "BluetoothSerial.h"
 
 // A library for interfacing with the touch screen
 //
@@ -85,9 +87,18 @@ lv_indev_t *indev;     // Touchscreen input device
 uint8_t *draw_buf;     // draw_buf is allocated on heap otherwise the static area is too big on ESP32 at compile
 uint32_t lastTick = 0; // Used to track the tick timer
 
+//BluetoothSerial SerialBT;
+bool isConnected= false;
+
+Preferences preferences;
+char projname1[50] = "Boot";
+char projname2[50] = "Flieger";
+char projname3[50] = "Zug";
+char projname4[50] = "Auto";
 void setup()
 {
 
+  delay(100);
   // Some basic info on the Serial console
   String LVGL_Arduino = "LVGL demo ";
   LVGL_Arduino += String('V') + lv_version_major() + "." + lv_version_minor() + "." + lv_version_patch();
@@ -98,6 +109,21 @@ void setup()
   touchscreenSpi.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS); /* Start second SPI bus for touchscreen */
   touchscreen.begin(touchscreenSpi);                                         /* Touchscreen init */
   touchscreen.setRotation(2);                                                /* Inverted landscape orientation to match screen */
+
+  
+ preferences.begin("projects", false); // Namespace "projects", lesend & schreibend
+
+    // Gespeicherte Namen laden (Standardwert: "Default")
+    String loadedName1 = preferences.getString("projname1", "Default1");
+    loadedName1.toCharArray(projname1, sizeof(projname1));
+    String loadedName2 = preferences.getString("projname2", "Default2");
+    loadedName2.toCharArray(projname2, sizeof(projname2));
+    String loadedName3 = preferences.getString("projname3", "Default3");
+    loadedName3.toCharArray(projname3, sizeof(projname3));
+    String loadedName4 = preferences.getString("projname4", "Default4");
+    loadedName4.toCharArray(projname4, sizeof(projname4));
+
+
 
   // Initialise LVGL GUI
   lv_init();
@@ -117,7 +143,10 @@ void setup()
 
   // Integrate EEZ Studio GUI
   ui_init();
+
+
 }
+
 
 extern lv_event_t g_eez_event;
 extern bool g_eez_event_is_available;
@@ -137,44 +166,93 @@ int t2 = 0;
 int t3 = 0;
 int t4 = 0;
 
+bool pstart=false;
+
+// Variablen für Echtzeit-Tracking
+unsigned long lastTimeT1 = 0;
+unsigned long lastTimeT2 = 0;
+unsigned long lastTimeT3 = 0;
+unsigned long lastTimeT4 = 0;
+
 void loop()
 {
-  lv_tick_inc(millis() - lastTick); // Update the tick timer. Tick is new for LVGL 9
+  lv_tick_inc(millis() - lastTick);
   lastTick = millis();
-  lv_timer_handler(); // Update the UI
+  lv_timer_handler();
   delay(10);
   ui_tick();
+if(pstart==false){
+lv_label_set_text(objects.btn1l, projname1);
+lv_label_set_text(objects.btn2l, projname2);
+lv_label_set_text(objects.btn3l, projname3);
+lv_label_set_text(objects.btn4l, projname4);
+pstart=true;
 
-  char labelText1[10] = {0};
-  sprintf(labelText1, "%04d", t2);
-  lv_label_set_text(objects.lbl2, labelText1);
-  char labelText2[10] = {0};
-  sprintf(labelText2, "%04d", t3);
-  lv_label_set_text(objects.lbl3, labelText2);
-  char labelText3[10] = {0};
-  sprintf(labelText3, "%04d", t4);
-  lv_label_set_text(objects.lbl4, labelText3);
-  char labelText4[10] = {0};
-  sprintf(labelText4, "%04d", t1);
-  lv_label_set_text(objects.lbl1, labelText4);
-  if (t1activ == true)
+}
+  // Echtzeit-Update für Variablen
+  unsigned long currentTime = millis();
+
+  if (t1activ)
   {
-    t1 = t1 + 1;
+    t1 += (currentTime - lastTimeT1); // Add elapsed time in ms
+    lastTimeT1 = currentTime;        // Update last timestamp
   }
-  else if (t2activ == true)
+  else
   {
-    t2 = t2 + 10;
-  }
-  else if (t3activ == true)
-  {
-    t3 = t3 + 10;
-  }
-  else if (t4activ == true)
-  {
-    t4 = t4 + 10;
+    lastTimeT1 = currentTime; // Reset timestamp if not active
   }
 
-  if (g_eez_event_is_available == true)
+  if (t2activ)
+  {
+    t2 += (currentTime - lastTimeT2) ; // Add elapsed time in ms (scaled by factor)
+    lastTimeT2 = currentTime;
+  }
+  else
+  {
+    lastTimeT2 = currentTime;
+  }
+
+  if (t3activ)
+  {
+    t3 += (currentTime - lastTimeT3) ;
+    lastTimeT3 = currentTime;
+  }
+  else
+  {
+    lastTimeT3 = currentTime;
+  }
+
+  if (t4activ)
+  {
+    t4 += (currentTime - lastTimeT4);
+    lastTimeT4 = currentTime;
+  }
+  else
+  {
+    lastTimeT4 = currentTime;
+  }
+
+  // Labels aktualisieren
+    auto formatTime = [](unsigned long ms) -> String {
+    unsigned long seconds = ms / 1000;
+    unsigned long minutes = seconds / 60;
+    unsigned long hours = minutes / 60;
+    seconds %= 60;
+    minutes %= 60;
+    char buffer[12];
+    sprintf(buffer, "%02lu:%02lu:%02lu", hours, minutes, seconds);
+    return String(buffer);
+  };
+  
+  lv_label_set_text(objects.lbl1, formatTime(t1).c_str());
+  lv_label_set_text(objects.lbl2, formatTime(t2).c_str());
+  lv_label_set_text(objects.lbl3, formatTime(t3).c_str());
+  lv_label_set_text(objects.lbl4, formatTime(t4).c_str());
+
+
+
+
+if (g_eez_event_is_available == true)
   {
     lv_obj_t *obj = lv_event_get_target_obj(&g_eez_event);
     Serial.printf("Received event from obj: %u\n", obj);
@@ -182,39 +260,77 @@ void loop()
 
     if (obj == objects.btn1)
     {
-      t1activ = true;
-      t2activ = false;
-      t3activ = false;
-      t4activ = false;
+      t1activ = !t1activ;
+      t2activ = t3activ = t4activ = false;
     }
-
     if (obj == objects.btn2)
     {
-      t1activ = false;
-      t2activ = true;
-      t3activ = false;
-      t4activ = false;
+      t2activ = !t2activ;
+      t1activ = t3activ = t4activ = false;
     }
-
     if (obj == objects.btn3)
     {
-      t1activ = false;
-      t2activ = false;
-      t3activ = true;
-      t4activ = false;
+      t3activ = !t3activ;
+      t1activ = t2activ = t4activ = false;
     }
-
     if (obj == objects.btn4)
     {
-      t1activ = false;
-      t2activ = false;
-      t3activ = false;
-      t4activ = true;
+      t4activ = !t4activ;
+      t1activ = t2activ = t3activ = false;
+    }
+    if (obj== objects.btns1){
+      lv_scr_load(objects.scr1);
+    }
+    if (obj== objects.btnhome){
+      lv_scr_load(objects.main);
+    }
+    if (obj== objects.btnch1){
+      lv_scr_load(objects.scrch1);
+    }
+    if (obj== objects.btnch2){
+      lv_scr_load(objects.scrch2);
+    }
+        if (obj== objects.btnch3){
+      lv_scr_load(objects.scrch3);
+    }
+        if (obj== objects.btnch4){
+      lv_scr_load(objects.scrch4);
+    }
+    if (obj== objects.txt1){
+    
+    const char *text = lv_textarea_get_text(objects.txt1);
+ 
+     preferences.putString("projname1", text);
+
+    lv_label_set_text(objects.btn1l, text);
+    lv_scr_load(objects.main);
+    }
+        if (obj== objects.txt2){
+    
+    const char *text = lv_textarea_get_text(objects.txt2);
+    preferences.putString("projname2", text);
+    lv_label_set_text(objects.btn2l, text);
+    lv_scr_load(objects.main);
+    }
+        if (obj== objects.txt3){
+    
+    const char *text = lv_textarea_get_text(objects.txt3);
+    preferences.putString("projname3", text);
+    lv_label_set_text(objects.btn3l, text);
+    lv_scr_load(objects.main);
+    }
+        if (obj== objects.txt4){
+    
+    const char *text = lv_textarea_get_text(objects.txt4);
+    preferences.putString("projname4", text);
+    lv_label_set_text(objects.btn4l, text);
+        preferences.putString(text, projname1);
+    lv_scr_load(objects.main);
     }
   }
 
   
-
+ if (lv_screen_active()== objects.main){
   int potValCur = analogRead(ANALOG_PIN_0); // Get the current raw value.
   if (potValCur == 0)
   {
@@ -226,41 +342,40 @@ void loop()
   {
 
     Serial.printf("BT1: %ld\n", potValCur);
-      t1activ = true;
-      t2activ = false;
-      t3activ = false;
-      t4activ = false;
+    
+    
+    t1activ = !t1activ;
+    t2activ = t3activ = t4activ = false;
+    
     intPotValPrev = potValCur;
   }
   else if (abs(potValCur - Valbtn2) < valfluk && (abs(potValCur - intPotValPrev) > valfluk))
   {
 
     Serial.printf("BT2: %ld\n", potValCur);
-          t1activ = false;
-      t2activ = true;
-      t3activ = false;
-      t4activ = false;
+
+    t2activ = !t2activ;
+    t1activ = t3activ = t4activ = false;
     intPotValPrev = potValCur;
   }
   else if (abs(potValCur - Valbtn3) < valfluk && (abs(potValCur - intPotValPrev) > valfluk))
   {
 
     Serial.printf("BTN3: %ld\n", potValCur);
-          t1activ = false;
-      t2activ = false;
-      t3activ = true;
-      t4activ = false;
+
+    t3activ = !t3activ;
+    t1activ = t2activ = t4activ = false;
     intPotValPrev = potValCur;
   }
   else if (abs(potValCur - Valbtn4) < valfluk && (abs(potValCur - intPotValPrev) > valfluk))
   {
 
     Serial.printf("BTN4: %ld\n", potValCur);
-          t1activ = false;
-      t2activ = false;
-      t3activ = false;
-      t4activ = true;
+    t4activ = !t4activ;
+    t2activ = t3activ = t1activ = false;
+      
     intPotValPrev = potValCur;
   }
-  // ========== ADC input END   ==========
+
+}  // ========== ADC input END   ==========
 }
