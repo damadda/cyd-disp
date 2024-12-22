@@ -5,7 +5,8 @@
 #include <Preferences.h>
 #include <XPT2046_Touchscreen.h>
 #include "actions.h"
-#include <time.h>
+
+#include "BluetoothSerial.h"
 
 // #include "BluetoothSerial.h"
 
@@ -88,8 +89,9 @@ lv_indev_t *indev;     // Touchscreen input device
 uint8_t *draw_buf;     // draw_buf is allocated on heap otherwise the static area is too big on ESP32 at compile
 uint32_t lastTick = 0; // Used to track the tick timer
 
-// BluetoothSerial SerialBT;
-bool isConnected = false;
+BluetoothSerial SerialBT;
+const char* btname = "Dingus";  // Unter diesem Namen findet man den ESP32 auf dem Handy
+bool BTisConnected = false;
 
 Preferences preferences;
 char projname1[50] = "Boot";
@@ -141,6 +143,23 @@ void setup()
 
   // Integrate EEZ Studio GUI
   ui_init();
+
+
+  SerialBT.begin(btname); //Name des Bluetooth interface, wird oben gesetzt
+  Serial.print("Bluetooth started: "); Serial.println(btname);
+  delay(500);
+}
+
+void btStatus (esp_spp_cb_event_t event, esp_spp_cb_param_t*param) {
+  if(event == ESP_SPP_SRV_OPEN_EVT){
+    Serial.println("Bluetooth Client Connected");
+    BTisConnected = true;
+  }
+ 
+  else if (event == ESP_SPP_CLOSE_EVT ) {
+    Serial.println ("Bluetooth Client Disconnected");
+    BTisConnected = false;
+  }
 }
 #define BTN_ACTIVE_COLOR lv_color_make(0, 0, 255)        // Blau
 #define BTN_INACTIVE_COLOR lv_color_make(100, 149, 237)  // Kräftiges Hellblau
@@ -177,6 +196,7 @@ void loop()
   lv_timer_handler();
   delay(10);
   ui_tick();
+  //label set on startup
   if (pstart == false)
   {
     lv_label_set_text(objects.btn1l, projname1);
@@ -187,7 +207,7 @@ void loop()
   }
   // Echtzeit-Update für Variablen
   unsigned long currentTime = millis();
-
+ // aktiver timer tracking
   if (t1activ)
   {
     t1 += (currentTime - lastTimeT1); // Add elapsed time in ms
@@ -245,6 +265,7 @@ void loop()
   lv_label_set_text(objects.lbl2, formatTime(t2).c_str());
   lv_label_set_text(objects.lbl3, formatTime(t3).c_str());
   lv_label_set_text(objects.lbl4, formatTime(t4).c_str());
+  
   if (t1activ)
 {
     lv_obj_set_style_bg_color(objects.btn1, BTN_ACTIVE_COLOR, LV_PART_MAIN);
