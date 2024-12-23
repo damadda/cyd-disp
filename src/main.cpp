@@ -5,10 +5,12 @@
 #include <Preferences.h>
 #include <XPT2046_Touchscreen.h>
 #include "actions.h"
-
 #include "BluetoothSerial.h"
 
-// #include "BluetoothSerial.h"
+BluetoothSerial SerialBT;
+
+// See the following for generating UUIDs:
+// https://www.uuidgenerator.net/
 
 // A library for interfacing with the touch screen
 //
@@ -89,24 +91,26 @@ lv_indev_t *indev;     // Touchscreen input device
 uint8_t *draw_buf;     // draw_buf is allocated on heap otherwise the static area is too big on ESP32 at compile
 uint32_t lastTick = 0; // Used to track the tick timer
 
-BluetoothSerial SerialBT;
-const char* btname = "Dingus";  // Unter diesem Namen findet man den ESP32 auf dem Handy
-bool BTisConnected = false;
-
 Preferences preferences;
 char projname1[50] = "Boot";
 char projname2[50] = "Flieger";
 char projname3[50] = "Zug";
 char projname4[50] = "Auto";
+String p1;
+String p2;
+String p3;
+String p4;
+
+
 void setup()
 {
-
-  delay(100);
+  
   // Some basic info on the Serial console
   String LVGL_Arduino = "LVGL demo ";
   LVGL_Arduino += String('V') + lv_version_major() + "." + lv_version_minor() + "." + lv_version_patch();
   Serial.begin(115200);
   Serial.println(LVGL_Arduino);
+  SerialBT.begin("Dingus");
 
   // Initialise the touchscreen
   touchscreenSpi.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS); /* Start second SPI bus for touchscreen */
@@ -145,24 +149,10 @@ void setup()
   ui_init();
 
 
-  SerialBT.begin(btname); //Name des Bluetooth interface, wird oben gesetzt
-  Serial.print("Bluetooth started: "); Serial.println(btname);
-  delay(500);
 }
 
-void btStatus (esp_spp_cb_event_t event, esp_spp_cb_param_t*param) {
-  if(event == ESP_SPP_SRV_OPEN_EVT){
-    Serial.println("Bluetooth Client Connected");
-    BTisConnected = true;
-  }
- 
-  else if (event == ESP_SPP_CLOSE_EVT ) {
-    Serial.println ("Bluetooth Client Disconnected");
-    BTisConnected = false;
-  }
-}
-#define BTN_ACTIVE_COLOR lv_color_make(0, 0, 255)        // Blau
-#define BTN_INACTIVE_COLOR lv_color_make(100, 149, 237)  // Kräftiges Hellblau
+#define BTN_ACTIVE_COLOR lv_color_make(0, 0, 255)       // Blau
+#define BTN_INACTIVE_COLOR lv_color_make(100, 149, 237) // Kräftiges Hellblau
 extern lv_event_t g_eez_event;
 extern bool g_eez_event_is_available;
 static int Valbtn1 = 650;
@@ -188,6 +178,14 @@ unsigned long lastTimeT1 = 0;
 unsigned long lastTimeT2 = 0;
 unsigned long lastTimeT3 = 0;
 unsigned long lastTimeT4 = 0;
+static unsigned long lastSendTime = 0;
+unsigned long sendInterval = 10000; // Senden alle 1000 ms (1 Sekunde)
+
+
+String message = "";
+char incoming;
+
+
 
 void loop()
 {
@@ -196,18 +194,85 @@ void loop()
   lv_timer_handler();
   delay(10);
   ui_tick();
-  //label set on startup
+  auto formatTime = [](unsigned long ms) -> String
+  {
+    unsigned long seconds = ms / 1000;
+    unsigned long minutes = seconds / 60;
+    unsigned long hours = minutes / 60;
+    seconds %= 60;
+    minutes %= 60;
+    char buffer[12];
+    sprintf(buffer, "%02lu:%02lu:%02lu", hours, minutes, seconds);
+    return String(buffer);
+  };
+
+if (millis() - lastSendTime >= sendInterval) {
+    lastSendTime = millis();
+
+    // Formatierte Timer-Strings und Projektnamen zusammenfassen
+    String dataToSend = String("Timers and Projects:\n") +
+                          formatTime(t1) + " : " + p1 + "\n" +
+                          formatTime(t2) + " : " + p2 + "\n" +
+                          formatTime(t3) + " : " + p3 + "\n" +
+                          formatTime(t4) + " : " + p4;
+
+    // Daten über Serial Bluetooth senden
+    SerialBT.println(dataToSend);
+
+}
+
+ if (SerialBT.available() > 0) {
+    incoming = SerialBT.read(); // Lese ein Zeichen aus dem Puffer
+    Serial.print("Empfangen: ");
+    Serial.println(incoming); // Debug-Ausgabe
+
+    if (incoming != '\n' && incoming != '\r') { // Zeilenumbrüche ignorieren
+      message += String(incoming); // Füge das Zeichen zur Nachricht hinzu
+    } else if (message.length() > 0) {
+      // Nachricht vollständig empfangen, wenn nicht leer
+      Serial.print("Nachricht vollständig: ");
+      Serial.println(message);
+
+      if (message == "timer1") {
+        t1activ = !t1activ;
+        t2activ = t3activ = t4activ = false;
+        Serial.println("Timer 1 aktiviert!");
+      } else if (message == "timer2") {
+        t2activ = !t2activ;
+        t1activ = t3activ = t4activ = false;
+        Serial.println("Timer 2 aktiviert!");
+      } else if (message == "timer3") {
+        t3activ = !t3activ;
+        t1activ = t2activ = t4activ = false;
+        Serial.println("Timer 3 aktiviert!");
+      } else if (message == "timer4") {
+        t4activ = !t4activ;
+        t1activ = t2activ = t3activ = false;
+        Serial.println("Timer 4 aktiviert!");
+      } else {
+        Serial.println("Unbekannte Nachricht erhalten.");
+      }
+
+      // Nachricht zurücksetzen
+      message = "";
+    }
+  }
+  
   if (pstart == false)
   {
     lv_label_set_text(objects.btn1l, projname1);
+    p1=projname1;
     lv_label_set_text(objects.btn2l, projname2);
+        p2=projname2;
     lv_label_set_text(objects.btn3l, projname3);
+        p3=projname3;
     lv_label_set_text(objects.btn4l, projname4);
+        p4=projname4;
     pstart = true;
   }
   // Echtzeit-Update für Variablen
   unsigned long currentTime = millis();
- // aktiver timer tracking
+  // aktiver timer tracking
   if (t1activ)
   {
     t1 += (currentTime - lastTimeT1); // Add elapsed time in ms
@@ -249,59 +314,48 @@ void loop()
   }
 
   // Labels aktualisieren
-  auto formatTime = [](unsigned long ms) -> String
-  {
-    unsigned long seconds = ms / 1000;
-    unsigned long minutes = seconds / 60;
-    unsigned long hours = minutes / 60;
-    seconds %= 60;
-    minutes %= 60;
-    char buffer[12];
-    sprintf(buffer, "%02lu:%02lu:%02lu", hours, minutes, seconds);
-    return String(buffer);
-  };
 
   lv_label_set_text(objects.lbl1, formatTime(t1).c_str());
   lv_label_set_text(objects.lbl2, formatTime(t2).c_str());
   lv_label_set_text(objects.lbl3, formatTime(t3).c_str());
   lv_label_set_text(objects.lbl4, formatTime(t4).c_str());
-  
+
   if (t1activ)
-{
+  {
     lv_obj_set_style_bg_color(objects.btn1, BTN_ACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn2, BTN_INACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn3, BTN_INACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn4, BTN_INACTIVE_COLOR, LV_PART_MAIN);
-}
-else if (t2activ)
-{
+  }
+  else if (t2activ)
+  {
     lv_obj_set_style_bg_color(objects.btn1, BTN_INACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn2, BTN_ACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn3, BTN_INACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn4, BTN_INACTIVE_COLOR, LV_PART_MAIN);
-}
-else if (t3activ)
-{
+  }
+  else if (t3activ)
+  {
     lv_obj_set_style_bg_color(objects.btn1, BTN_INACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn2, BTN_INACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn3, BTN_ACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn4, BTN_INACTIVE_COLOR, LV_PART_MAIN);
-}
-else if (t4activ)
-{
+  }
+  else if (t4activ)
+  {
     lv_obj_set_style_bg_color(objects.btn1, BTN_INACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn2, BTN_INACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn3, BTN_INACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn4, BTN_ACTIVE_COLOR, LV_PART_MAIN);
-}
-else
-{
+  }
+  else
+  {
     // Falls kein Timer aktiv ist, alle Buttons auf inaktive Farbe setzen
     lv_obj_set_style_bg_color(objects.btn1, BTN_INACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn2, BTN_INACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn3, BTN_INACTIVE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_color(objects.btn4, BTN_INACTIVE_COLOR, LV_PART_MAIN);
-}
+  }
 
   if (g_eez_event_is_available == true)
   {
@@ -309,31 +363,36 @@ else
     Serial.printf("Received event from obj: %u\n", obj);
     g_eez_event_is_available = false;
 
-    if (obj == objects.btn1)
+    if (obj == objects.btn1 )
     {
       t1activ = !t1activ;
       t2activ = t3activ = t4activ = false;
+    
     }
     if (obj == objects.btn2)
     {
       t2activ = !t2activ;
       t1activ = t3activ = t4activ = false;
+    
     }
-    if (obj == objects.btn3)
+    if (obj == objects.btn3 )
     {
       t3activ = !t3activ;
       t1activ = t2activ = t4activ = false;
+
     }
     if (obj == objects.btn4)
     {
       t4activ = !t4activ;
       t1activ = t2activ = t3activ = false;
+
     }
     if (obj == objects.btns1)
     {
       lv_scr_load(objects.scrch1);
       delay(100);
     }
+
     if (obj == objects.btnexit)
     {
       lv_scr_load(objects.main);
